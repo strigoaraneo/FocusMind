@@ -1,46 +1,51 @@
 # --------------------------------------------------------------
-# 1️⃣  Build stage – compile React (or Vite) app
+# Stage 0 – build the React app
 # --------------------------------------------------------------
 FROM node:20-alpine AS builder
 
+# Set a deterministic working directory
 WORKDIR /app
-COPY frontend/package*.json ./
-RUN npm ci --silent
 
-COPY frontend/ ./
-# The build step reads REACT_APP_BACKEND_URL from the build environment.
-ARG REACT_APP_BACKEND_URL
-ENV REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
-RUN npm run build   # creates ./build
+# 1️⃣  Copy only the files needed for npm install first.
+#     This gives us a cache layer that only invalidates when the
+#     dependency list changes.
+COPY package*.json ./
+# If you have a lock‑file (package‑lock.json or yarn.lock) it will be
+# copied as well because of the glob above.
+RUN npm ci --silent               # installs exactly what the lock file says
+
+# 2️⃣  Copy the rest of the source code and build it.
+COPY . .
+RUN npm run build                # ← creates ./build (static assets)
 
 # --------------------------------------------------------------
-# 2️⃣  Runtime stage – serve static files with Nginx
+# Stage 1 – runtime (tiny static‑file server)
 # --------------------------------------------------------------
-FROM nginx:alpine
+FROM node:20-alpine AS runtime
 
-# Remove the default server block
-RUN rm /etc/nginx/conf.d/default.conf
+# System tools required for the tiny server (none really, but keep it lean)
+RUN apk add --no-cache \
+        # required by the `serve` binary (it uses `fs` only, no extra deps)
+        && npm install -g serve@14    # a single‑command static server (~2 MB)
 
-# Install envsubst (to replace $PORT at container start)
-RUN apk add --no-cache gettext
+# Create a non‑root user (safer on Render)
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 
-# Custom Nginx config – note the `listen ${PORT};`
-COPY <<'EOF' /etc/nginx/conf.d/gaze.conf
-server {
-    listen ${PORT};
-    server_name _;
+WORKDIR /srv/app
 
-    # Serve the React SPA
-    location / {
-        root   /usr/share/nginx/html;
-        try_files $uri /index.html =404;
-    }
-}
-EOF
+# 3️⃣  Copy the compiled build folder from the builder stage.
+COPY --from=builder /app/build ./
 
-# Render will replace ${PORT} with the actual port at start‑up.
-# The CMD runs envsubst once and then starts nginx.
-CMD /bin/sh -c "envsubst < /etc/nginx/conf.d/gaze.conf > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
+# --------------------------------------------------------------
+# Runtime configuration
+# --------------------------------------------------------------
+# Render injects the environment variable $PORT (usually 10000). 
+# The `serve` binary defaults to 3000, so we override it with $PORT.
+ENV PORT=${PORT:-3000}        # fallback for local runs
 
-# Copy the compiled assets from the builder
-COPY --from=builder /app/build /usr/share/nginx/html
+# Expose the port Render will probe.
+EXPOSE 3000
+
+# ENTRYPOINT runs the server; the `exec` form ensures the process becomes PID 1.
+ENTRYPOINT ["serve", "-s", ".", "-l", "tcp://0.0.0.0:${PORT}"]
