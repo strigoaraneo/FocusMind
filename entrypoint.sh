@@ -8,4 +8,4 @@
 PORT=${PORT:-8000}
 
 # Run uvicorn – the exec replaces the shell so Docker sees uvicorn as PID 1
-exec uvicorn api.api:app --host 0.0.0.0 --port "$PORT"
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT"
