@@ -45,10 +45,9 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 # Copy the entire source tree – **exclude** the frontend folder (npm files)
 COPY . .
 
-# Expose the port Render will set via $PORT (default 10000 on Render)
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+
+# The port Render will set (default 10000)
 EXPOSE 10000
 
-# --------------------------------------------------------------
-# 3️⃣  Command – start Uvicorn, listening on the env‑provided port
-# --------------------------------------------------------------
-CMD ["uvicorn", "api.api:app", "--host", "0.0.0.0", "--port", "$PORT"]
+ENTRYPOINT ["/entrypoint.sh"]
