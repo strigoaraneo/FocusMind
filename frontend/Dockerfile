@@ -12,11 +12,11 @@ WORKDIR /app
 COPY package*.json ./
 # If you have a lock‑file (package‑lock.json or yarn.lock) it will be
 # copied as well because of the glob above.
-RUN npm ci --silent               # installs exactly what the lock file says
+RUN npm ci --silent
 
 # 2️⃣  Copy the rest of the source code and build it.
 COPY . .
-RUN npm run build                # ← creates ./build (static assets)
+RUN npm run build
 
 # --------------------------------------------------------------
 # Stage 1 – runtime (tiny static‑file server)
@@ -26,7 +26,7 @@ FROM node:20-alpine AS runtime
 # System tools required for the tiny server (none really, but keep it lean)
 RUN apk add --no-cache \
         # required by the `serve` binary (it uses `fs` only, no extra deps)
-        && npm install -g serve@14    # a single‑command static server (~2 MB)
+        && npm install -g serve@14
 
 # Create a non‑root user (safer on Render)
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -42,7 +42,7 @@ COPY --from=builder /app/build ./
 # --------------------------------------------------------------
 # Render injects the environment variable $PORT (usually 10000). 
 # The `serve` binary defaults to 3000, so we override it with $PORT.
-ENV PORT=${PORT:-3000}        # fallback for local runs
+ENV PORT=${PORT:-3000}
 
 # Expose the port Render will probe.
 EXPOSE 3000
